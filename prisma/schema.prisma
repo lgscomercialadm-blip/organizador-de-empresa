@@ -1,0 +1,135 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Modelo de Usuário (Empresário)
+model User {
+  id            String          @id @default(cuid())
+  name          String
+  email         String          @unique
+  password      String
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // Relações
+  setores       Setor[]
+  membrosEquipe MembroEquipe[]
+  canaisVenda   CanalVenda[]
+  tarefas       Tarefa[]
+  alertas       Alerta[]
+}
+
+// Modelo de Setor (Departamentos da empresa)
+model Setor {
+  id          String   @id @default(cuid())
+  nome        String
+  descricao   String?
+  cor         String?  // Para identificação visual
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relações
+  tarefas     Tarefa[]
+
+  @@index([userId])
+}
+
+// Modelo de Membro da Equipe
+model MembroEquipe {
+  id          String   @id @default(cuid())
+  nome        String
+  email       String?
+  cargo       String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relações
+  tarefas     Tarefa[]
+
+  @@index([userId])
+}
+
+// Modelo de Canal de Venda
+model CanalVenda {
+  id              String   @id @default(cuid())
+  nome            String
+  descricao       String?
+  diaFechamento   Int?     // Dia do mês para fechamento
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Modelo de Tarefa/Obrigação
+model Tarefa {
+  id                String        @id @default(cuid())
+  titulo            String
+  descricao         String?
+  dataVencimento    DateTime
+  recorrente        Boolean       @default(false)
+  tipoRecorrencia   String?       // "diaria", "semanal", "mensal", "anual"
+  diaDoMes          Int?          // Para recorrência mensal
+  diaDaSemana       Int?          // Para recorrência semanal (0-6)
+  concluida         Boolean       @default(false)
+  dataConclusao     DateTime?
+
+  // Responsável (pode ser o próprio empresário ou membro da equipe)
+  responsavelId     String?
+  responsavel       MembroEquipe? @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
+
+  // Setor relacionado
+  setorId           String?
+  setor             Setor?        @relation(fields: [setorId], references: [id], onDelete: SetNull)
+
+  // Criador (sempre o empresário)
+  userId            String
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  // Relações
+  alertas           Alerta[]
+
+  @@index([userId])
+  @@index([dataVencimento])
+  @@index([responsavelId])
+  @@index([setorId])
+}
+
+// Modelo de Alerta/Lembrete
+model Alerta {
+  id              String   @id @default(cuid())
+  tarefaId        String
+  tarefa          Tarefa   @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+  diasAntecedencia Int     // Quantos dias antes alertar
+  dataAlerta      DateTime // Data calculada do alerta
+  enviado         Boolean  @default(false)
+  visualizado     Boolean  @default(false)
+
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@index([dataAlerta])
+  @@index([tarefaId])
+}
