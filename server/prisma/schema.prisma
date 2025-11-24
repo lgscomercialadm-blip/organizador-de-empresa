@@ -1,0 +1,223 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  INTERNAL
+  CLIENT
+}
+
+enum ActionStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  BLOCKED
+}
+
+enum VisibilityType {
+  INTERNAL
+  VISIBLE_TO_CLIENT
+}
+
+enum RecurrenceType {
+  ONCE
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum DeadlineType {
+  SPECIFIC_DATE
+  RELATIVE_DAYS // D+1, D+5, D+7, etc
+  RECURRING
+}
+
+// Models
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  password      String
+  name          String
+  role          UserRole
+  permissions   Json?    // Permissões customizadas para usuários INTERNAL
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relações
+  clientsCreated  Client[]       @relation("ClientCreator")
+  actionsAssigned Action[]       @relation("ActionAssignee")
+  historyEntries  HistoryEntry[]
+
+  @@map("users")
+}
+
+model Client {
+  id              String    @id @default(uuid())
+  name            String
+  companyName     String?
+  cnpjCpf         String?
+  email           String?
+  phone           String?
+  productId       String
+  entryDate       DateTime  @default(now()) // D0
+  consultantId    String
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relações
+  product         Product   @relation(fields: [productId], references: [id])
+  consultant      User      @relation("ClientCreator", fields: [consultantId], references: [id])
+  board           Board?
+
+  @@map("clients")
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relações
+  clients          Client[]
+  phaseTemplates   PhaseTemplate[]
+
+  @@map("products")
+}
+
+model PhaseTemplate {
+  id              String         @id @default(uuid())
+  productId       String
+  name            String
+  description     String?
+  order           Int
+  visibility      VisibilityType @default(INTERNAL)
+  deadlineType    DeadlineType   @default(RELATIVE_DAYS)
+  deadlineDays    Int?           // Para RELATIVE_DAYS: D+1, D+5, etc
+  deadlineDate    DateTime?      // Para SPECIFIC_DATE
+  recurrence      RecurrenceType @default(ONCE)
+  recurrenceDays  Int?           // Para RECURRING: a cada X dias
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  // Relações
+  product         Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  actionTemplates ActionTemplate[]
+
+  @@map("phase_templates")
+}
+
+model ActionTemplate {
+  id              String         @id @default(uuid())
+  phaseTemplateId String
+  title           String
+  description     String?        @db.Text
+  order           Int
+  visibility      VisibilityType @default(INTERNAL)
+  deadlineType    DeadlineType   @default(RELATIVE_DAYS)
+  deadlineDays    Int?
+  deadlineDate    DateTime?
+  recurrence      RecurrenceType @default(ONCE)
+  recurrenceDays  Int?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  // Relações
+  phaseTemplate   PhaseTemplate  @relation(fields: [phaseTemplateId], references: [id], onDelete: Cascade)
+
+  @@map("action_templates")
+}
+
+model Board {
+  id              String   @id @default(uuid())
+  clientId        String   @unique
+  name            String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relações
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  phases          Phase[]
+
+  @@map("boards")
+}
+
+model Phase {
+  id              String         @id @default(uuid())
+  boardId         String
+  name            String
+  description     String?
+  order           Int
+  visibility      VisibilityType @default(INTERNAL)
+  deadlineType    DeadlineType   @default(RELATIVE_DAYS)
+  deadlineDays    Int?
+  deadlineDate    DateTime?
+  recurrence      RecurrenceType @default(ONCE)
+  recurrenceDays  Int?
+  isCompleted     Boolean        @default(false)
+  completedAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  // Relações
+  board           Board          @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  actions         Action[]
+
+  @@map("phases")
+}
+
+model Action {
+  id              String         @id @default(uuid())
+  phaseId         String
+  title           String
+  description     String?        @db.Text
+  status          ActionStatus   @default(NOT_STARTED)
+  order           Int
+  visibility      VisibilityType @default(INTERNAL)
+  deadlineType    DeadlineType   @default(RELATIVE_DAYS)
+  deadlineDays    Int?
+  deadlineDate    DateTime?
+  recurrence      RecurrenceType @default(ONCE)
+  recurrenceDays  Int?
+  assigneeId      String?
+  isDelayed       Boolean        @default(false)
+  completedAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  // Relações
+  phase           Phase          @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  assignee        User?          @relation("ActionAssignee", fields: [assigneeId], references: [id])
+  history         HistoryEntry[]
+
+  @@map("actions")
+}
+
+model HistoryEntry {
+  id          String   @id @default(uuid())
+  actionId    String
+  userId      String
+  field       String
+  oldValue    String?
+  newValue    String?
+  createdAt   DateTime @default(now())
+
+  // Relações
+  action      Action   @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@map("history_entries")
+}
